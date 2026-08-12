@@ -13,14 +13,20 @@ authors = [
     { name = "Chien Van Nguyen", email = "chienn@uoregon.edu" }
 ]
 
-license = { text = "Apache-2.0" }
+license = { text = "MIT" }
 
 dependencies = [
-    "torch>=2.10.0",
-    "transformers>=5.8.0",
-    "accelerate>=1.13.0",
+    "torch>=2.12.0",
+    "transformers>=5.15.0",
+    "accelerate",
+    "datasets",
+    "flash-linear-attention",
+    "liger-kernel",
     "numpy",
 ]
+
+[project.optional-dependencies]
+train = ["wandb", "tqdm"]
 
 [project.urls]
 Repository = "https://github.com/chiennv2000/orthrus"
