@@ -65,7 +65,7 @@ output_ids = model.generate(
 )
 ```
 
-> **vLLM integration:** an unofficial, community out-of-tree plugin adds native vLLM support (`trust_remote_code=False`) for the autoregressive path — see [OnePunchMonk/orthrus-vllm](https://github.com/OnePunchMonk/orthrus-vllm), which also links the original in-tree PRs ([vllm-project/vllm#44792](https://github.com/vllm-project/vllm/pull/44792), [#53753](https://github.com/vllm-project/vllm/pull/53753)). Diffusion-mode decoding is included as tested reference code but not yet active — see that repo's docs for why. SGLang integration is still outstanding.
+> **vLLM integration:** [`integrations/vllm/`](integrations/vllm/) in this repo is an out-of-tree vLLM plugin adding native support (`trust_remote_code=False`) for the autoregressive path — install directly from this folder, no separate repo required. It also links the original in-tree PRs ([vllm-project/vllm#44792](https://github.com/vllm-project/vllm/pull/44792), [#53753](https://github.com/vllm-project/vllm/pull/53753)). Diffusion-mode decoding is included as tested reference code but not yet active — see [`integrations/vllm/docs/DIFFUSION_MODE.md`](integrations/vllm/docs/DIFFUSION_MODE.md) for why. A standalone mirror lives at [OnePunchMonk/orthrus-vllm](https://github.com/OnePunchMonk/orthrus-vllm). SGLang integration is still outstanding.
  
 ## Key Advantages
  
