@@ -1,25 +1,51 @@
-# Diffusion-mode decoding: why it's reference code, not an active feature
+# Diffusion-mode decoding (opt-in, experimental)
 
-This plugin activates Orthrus's **autoregressive serving path only**. The diffusion-mode, self-speculative decoding path (`src/orthrus_vllm/speculative/orthrus_proposer.py`) is included as real, tested reference code — it is not wired up, and importing this package does not enable it. This is a deliberate, honest limitation, not an oversight, and it's worth explaining why.
+By default this plugin serves Orthrus through vLLM's standard autoregressive path. Diffusion-mode self-speculative decoding is available as an **opt-in, experimental** feature, pinned to the vLLM versions it was tested on (currently 0.31.x).
 
-## What the code actually does (verified on GPU, see the original PR threads)
+## Enable
 
-The proposer implements Orthrus's propose→verify→accept loop against vLLM's `SpecDecodeBaseProposer` interface. Per the original PR (vllm-project/vllm#53753) comment history:
+```bash
+export ORTHRUS_VLLM_DIFFUSION=1
+```
 
-- End-to-end generation works via `speculative_config={"method": "orthrus", ...}` on a patched vLLM build.
-- A real bug was found and fixed: `OrthrusProposer` sets `kv_sharing_target_layer_name` so its diffusion attention *reads* the target's paged KV cache, but vLLM's `Attention.forward` also uses that field to decide whether to *write* this layer's own KV into the cache — correct for the one existing KV-sharing pattern (Gemma4 MTP, which is Q-only), wrong for Orthrus (which has real K/V projections that do need writing). Fixing this took the measured acceptance rate from ~3% to ~53% (100-prompt benchmark, A10G, `chiennv/Orthrus-Qwen3-1.7B`, `num_speculative_tokens=4`), in line with the reference implementation's own reported 39-82%.
-- Honestly reported result: even after the fix, end-to-end throughput was still a net slowdown (0.65x vs. plain autoregressive) on that hardware/model/config. The reference implementation's own benchmark (run directly, not through vLLM) shows a real 2.39x speedup with byte-identical output vs. AR — so the approach is sound, but vLLM's specific integration overhead wasn't yet fully closed against the reference's numbers when this work stopped.
+```python
+from vllm import LLM, SamplingParams
 
-None of this is fabricated or aspirational — it's the literal comment history on the closed upstream PR, linked in the main README.
+llm = LLM(
+    model="chiennv/Orthrus-Qwen3-1.7B",
+    trust_remote_code=False,
+    speculative_config={
+        "method": "dflash",  # vLLM's parallel-drafter slot, see below
+        "model": "chiennv/Orthrus-Qwen3-1.7B",
+        "num_speculative_tokens": 4,
+    },
+)
+```
 
-## Why it can't be a clean OOT plugin today
+With the flag unset, nothing is patched and behaviour is the plain AR plugin. On an unsupported vLLM version, the flag raises instead of patching.
 
-vLLM's plugin system (`vllm.general_plugins`) officially supports registering **models** via `ModelRegistry.register_model` — that's exactly what this package does for the AR path, with zero patches to vLLM's core. There is no equivalent, documented extension point for registering a **custom speculative-decoding drafter method**. The drafter is selected by a hardcoded `if/elif` chain on `speculative_config.method` inside `GPUModelRunner.__init__` (`vllm/v1/worker/gpu_model_runner.py`), which vLLM's engine constructs internally — there's no supported hook to intercept that construction from outside the vllm-project/vllm codebase, and vLLM's `SpeculativeConfig.method` validation independently whitelists a fixed set of method-name strings in `vllm/config/speculative.py`.
+## How it works without an upstream change
 
-Monkey-patching vLLM internals at plugin import time (rewriting those methods at runtime) was considered and deliberately rejected for this repo: it would silently drift out of sync with any upstream vLLM changes to `GPUModelRunner`, and a plugin that patches vLLM's own dispatch logic is exactly the kind of fragile, hard-to-debug integration vLLM's plugin system was designed to avoid.
+vLLM has no registry for speculative drafters (`method="custom_class"` only hands the proposer token ids, with no attention metadata, KV cache or hidden states). But Orthrus' drafter has the same shape as a DFlash drafter: one bonus token plus K mask tokens in a single non-causal forward, reading the target's KV cache. So vLLM's `dflash` slot already does the config validation, aux-hidden-state plumbing and KV-group wiring it needs. `orthrus_vllm.speculative.activate` makes these changes when the flag is on:
 
-## The honest path to activating this
+- swaps `OrthrusProposer` in for `DFlashProposer` in `vllm.v1.worker.gpu_model_runner`
+- registers the `DFlashOrthrusLM` architecture alias vLLM derives for the draft
+- adds a `dflash_config` (mask token id, one aux layer) to `OrthrusConfig`
+- sets `VLLM_USE_V2_MODEL_RUNNER=0`, because 0.31's V2 runner has its own speculator classes that are not patched
 
-The actual fix is a small, generic, non-model-specific upstream change to vLLM: an extensibility point for OOT speculative-decoding drafters, analogous to `ModelRegistry.register_model` — e.g. a `SpecDecodeRegistry` that plugins can register a `(method_name, proposer_class)` pair against, with `GPUModelRunner` consulting the registry as a fallback in its existing `if/elif` chain. This is a fundamentally different kind of PR than the closed #44792/#53753: it's infrastructure that benefits every future OOT model needing custom draft logic, not a single niche model's feature, and it isn't subject to the same "not enough adoption to justify in-tree maintenance" objection that closed the model-support PR (see the main README for the exact maintainer feedback).
+These are small, version-pinned patches, but they are still patches of vLLM internals and can break on any vLLM upgrade.
 
-That upstream PR has not been opened yet. Until it lands (or an equivalent extension point exists), this package ships the tested proposer code for reference and reuse, but diffusion-mode decoding is not something `pip install orthrus-vllm` alone will get you.
+## What was validated
+
+On a Modal A10G, vllm 0.31.0, `chiennv/Orthrus-Qwen3-1.7B`, `enforce_eager`, `num_speculative_tokens=4`, greedy, 3 prompts x 64 tokens:
+
+- Output matched plain autoregressive decoding exactly in one run, but **not in a repeat run** of the same setup (under investigation). Speculative decoding with rejection sampling should be lossless up to numerical noise, so a divergence is either floating-point differences from the different batch shapes or a bug in this proposer. That is not yet established.
+- About 52-55% of draft tokens accepted (181/332 and 175/348 in two runs).
+- It is **slower** than autoregressive here (about 2.6 s vs 1.1 s for the same batch, 0.44x).
+
+## Not validated
+
+- That the output is lossless. See the first bullet above.
+- Any speedup. The earlier upstream attempt also measured a slowdown, and the reference implementation's own 2.39x is not reproduced through vLLM. Likely contributors are eager mode, tiny batches, and the proposer's extra per-step work, but this was not profiled.
+- CUDA graphs, tensor parallelism, large batches, long outputs, and the 4B/8B checkpoints.
+- vLLM versions other than 0.31.x, and the V2 model runner.

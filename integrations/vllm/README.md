@@ -20,13 +20,13 @@ This package contains no original model architecture or training contribution �
 - Registers `OrthrusForCausalLM` / `OrthrusLM` as a vLLM text-generation architecture (`ModelRegistry.register_model`).
 - Serves Orthrus checkpoints through vLLM's **standard autoregressive path** — this is the fully working, supported part of this package.
 
-## What this does *not* do (yet)
+## Diffusion mode (opt-in, experimental)
 
-Diffusion-mode self-speculative decoding (Orthrus's actual headline feature — up to 2.39-7.8x speedup, strictly lossless, per the original repo) is **not** activated by this plugin. The proposer code is included as tested reference code, not a working feature. Read [`docs/DIFFUSION_MODE.md`](docs/DIFFUSION_MODE.md) for exactly what was validated, what the real, non-toy blocker is (vLLM's spec-decode drafter dispatch has no OOT extension point, unlike model registration), and what upstream change would actually fix it.
+Diffusion-mode self-speculative decoding can be enabled with `ORTHRUS_VLLM_DIFFUSION=1` on vLLM 0.31.x. On the tested setup it gets about 52-55% draft acceptance but is currently **slower** than plain autoregressive decoding, and its output matched autoregressive in one run but not in a repeat, so it is experimental and not yet verified lossless. It works by patching vLLM internals at plugin load, pinned to tested versions. See [`docs/DIFFUSION_MODE.md`](docs/DIFFUSION_MODE.md) for how to enable it, exactly what was validated, and what was not.
 
 ## Verification status
 
-The autoregressive-path code in this repository is a direct port of what was validated end-to-end on real GPUs (A10G and A100-80GB) in the [#44792 PR thread](https://github.com/vllm-project/vllm/pull/44792) — see that thread for full setup/reproduction logs. It has **not** been re-run against a live vLLM install in the process of packaging it as this plugin (that requires a CUDA GPU and a full vLLM install, not available in the packaging environment) — before relying on this for anything beyond experimentation, run the smoke test below yourself and open an issue if something doesn't match the original PR's behavior.
+The autoregressive path was validated on real GPUs (A10G and A100-80GB) in the [#44792 PR thread](https://github.com/vllm-project/vllm/pull/44792), and re-run as this plugin on an A10G with vllm 0.31.0 (repo tests pass, greedy output on `chiennv/Orthrus-Qwen3-1.7B` matches the HF reference). Coverage is narrow: 1.7B only, short prompts. Before relying on it beyond experimentation, run the smoke test below yourself.
 
 ## Install
 

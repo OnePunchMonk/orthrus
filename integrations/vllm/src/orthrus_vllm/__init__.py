@@ -5,10 +5,9 @@ Registers Orthrus (https://github.com/chiennv2000/orthrus) as a vLLM model
 via the standard ``vllm.general_plugins`` entry point, so
 ``chiennv/Orthrus-*`` checkpoints load with ``trust_remote_code=False``.
 
-This entry point activates the autoregressive serving path only. See
-``docs/DIFFUSION_MODE.md`` for why the diffusion / self-speculative decoding
-path is shipped as reference code but not wired up, and what upstream
-change would be needed to activate it as a plugin.
+This entry point activates the autoregressive serving path. The diffusion /
+self-speculative decoding path is opt-in (``ORTHRUS_VLLM_DIFFUSION=1``); see
+``docs/DIFFUSION_MODE.md``.
 """
 
 
@@ -34,3 +33,8 @@ def register() -> None:
             "OrthrusLM",
             "orthrus_vllm.model:OrthrusForCausalLM",
         )
+
+    from .speculative import activate
+
+    if activate.enabled():
+        activate.activate()

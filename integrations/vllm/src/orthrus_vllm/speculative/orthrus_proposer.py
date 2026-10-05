@@ -2,12 +2,13 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """EXPERIMENTAL Orthrus diffusion-mode proposer for speculative decoding.
 
-Status: EXPERIMENTAL and not yet validated end-to-end (see the discussion
-on https://github.com/vllm-project/vllm/pull/44792). It IS wired into the
-engine -- ``speculative_config={"method": "orthrus", ...}`` constructs
-this proposer and reaches its ``propose()`` path -- but has not completed
-a successful generate() run, and has not been run against vLLM's CI,
-multi-GPU, or CUDA graph capture.
+Status: EXPERIMENTAL. Validated end to end on vLLM 0.31.x (A10G, Orthrus-
+Qwen3-1.7B, greedy: about 52-55% draft-token acceptance, slower than
+autoregressive; output matched AR in one run and diverged in another, still
+being investigated).
+It is activated from this plugin by ``orthrus_vllm.speculative.activate``
+(opt-in via ``ORTHRUS_VLLM_DIFFUSION=1``), which swaps it into vLLM's
+``dflash`` drafter slot. See docs/DIFFUSION_MODE.md.
 
 What this implements: loading a second copy of the target Orthrus
 checkpoint as a speculative-decode "draft" model, and KV-sharing each of
@@ -89,13 +90,21 @@ class OrthrusProposer(SpecDecodeBaseProposer):
         runner=None,
     ):
         assert vllm_config.speculative_config is not None
-        assert vllm_config.speculative_config.method == "orthrus"
+        # "orthrus" on a patched vLLM build, or "dflash" when activated by
+        # orthrus_vllm.speculative.activate (the runner's DFlash slot).
+        assert vllm_config.speculative_config.method in ("orthrus", "dflash")
         super().__init__(
             vllm_config,
             device,
             pass_hidden_states_to_model=False,
             runner=runner,
         )
+        # When riding vLLM's dflash slot, stop identifying as "dflash" now that
+        # the base __init__ has done its dflash-specific setup (mask token,
+        # parallel drafting). propose() asserts the draft is a DFlash/Eagle3
+        # model class and calls combine_hidden_states() for those methods,
+        # neither of which applies to Orthrus.
+        self.method = "orthrus"
 
     @override
     def model_returns_tuple(self) -> bool:
@@ -173,7 +182,7 @@ class OrthrusProposer(SpecDecodeBaseProposer):
         """
         from vllm.compilation.backends import set_model_tag
         from vllm.model_executor.model_loader import get_model
-        from vllm.model_executor.models.orthrus import building_diffusion_draft
+        from orthrus_vllm.model import building_diffusion_draft
 
         draft_vllm_config = self._create_draft_vllm_config()
         with building_diffusion_draft(), set_model_tag("orthrus_diffusion_draft"):
