@@ -37,7 +37,7 @@ These are small, version-pinned patches, but they are still patches of vLLM inte
 
 ## What was validated
 
-On a Modal A10G, vllm 0.31.0, `chiennv/Orthrus-Qwen3-1.7B`, `enforce_eager`, `num_speculative_tokens=4`, greedy, 3 prompts x 64 tokens:
+On a Modal A10G, vllm 0.31.0, `chiennv/Orthrus-Qwen3-1.7B`, `enforce_eager`, `num_speculative_tokens=4`, greedy (the float32/bfloat16 comparison used 12 prompts x 96 tokens; the acceptance and timing numbers come from 3-prompt x 64-token runs):
 
 - **float32: output is identical to plain autoregressive decoding** on 12 prompts x 96 tokens (1,152 tokens, no divergence). This is the check that the proposer and verification logic are correct.
 - **bfloat16: output is not always identical.** On the same 12 prompts only 5 matched, diverging at scattered positions (tokens 7 to 85). Verification runs the target with different query shapes than plain decoding, so kernels round differently and near-tied greedy tokens can flip. Because float32 matches exactly, this looks like numerical noise and not a logic bug, but the margin of the flipped tokens was not inspected.
