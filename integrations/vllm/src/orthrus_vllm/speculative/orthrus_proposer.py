@@ -3,9 +3,9 @@
 """EXPERIMENTAL Orthrus diffusion-mode proposer for speculative decoding.
 
 Status: EXPERIMENTAL. Validated end to end on vLLM 0.31.x (A10G, Orthrus-
-Qwen3-1.7B, greedy: about 52-55% draft-token acceptance, slower than
-autoregressive; output matched AR in one run and diverged in another, still
-being investigated).
+Qwen3-1.7B, greedy: float32 output identical to autoregressive on 12 prompts
+x 96 tokens; bfloat16 differs on some prompts from numerical noise; about
+52-55% draft acceptance; slower than autoregressive).
 It is activated from this plugin by ``orthrus_vllm.speculative.activate``
 (opt-in via ``ORTHRUS_VLLM_DIFFUSION=1``), which swaps it into vLLM's
 ``dflash`` drafter slot. See docs/DIFFUSION_MODE.md.

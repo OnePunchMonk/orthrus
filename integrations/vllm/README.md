@@ -22,7 +22,7 @@ This package contains no original model architecture or training contribution â€
 
 ## Diffusion mode (opt-in, experimental)
 
-Diffusion-mode self-speculative decoding can be enabled with `ORTHRUS_VLLM_DIFFUSION=1` on vLLM 0.31.x. On the tested setup it gets about 52-55% draft acceptance but is currently **slower** than plain autoregressive decoding, and its output matched autoregressive in one run but not in a repeat, so it is experimental and not yet verified lossless. It works by patching vLLM internals at plugin load, pinned to tested versions. See [`docs/DIFFUSION_MODE.md`](docs/DIFFUSION_MODE.md) for how to enable it, exactly what was validated, and what was not.
+Diffusion-mode self-speculative decoding can be enabled with `ORTHRUS_VLLM_DIFFUSION=1` on vLLM 0.31.x. On the tested setup it gets about 52-55% draft acceptance but is currently **slower** than plain autoregressive decoding, and it is experimental. Output is identical to autoregressive in float32 (12 prompts x 96 tokens) but can differ in bfloat16 from numerical noise. It works by patching vLLM internals at plugin load, pinned to tested versions. See [`docs/DIFFUSION_MODE.md`](docs/DIFFUSION_MODE.md) for how to enable it, exactly what was validated, and what was not.
 
 ## Verification status
 
